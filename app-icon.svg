@@ -1,0 +1,20 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#5e5ce6"/>
+      <stop offset="100%" stop-color="#0a84ff"/>
+    </linearGradient>
+    <linearGradient id="pane" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.95"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0.82"/>
+    </linearGradient>
+  </defs>
+  <rect x="64" y="64" width="896" height="896" rx="200" fill="url(#bg)"/>
+  <!-- three overlapping terminal panes = multiplexer -->
+  <rect x="330" y="230" width="470" height="330" rx="44" fill="#ffffff" opacity="0.28"/>
+  <rect x="270" y="300" width="470" height="330" rx="44" fill="#ffffff" opacity="0.5"/>
+  <rect x="210" y="370" width="470" height="330" rx="44" fill="url(#pane)"/>
+  <!-- prompt chevron + cursor on the front pane -->
+  <path d="M 292 470 L 388 535 L 292 600" fill="none" stroke="#0a84ff" stroke-width="46" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="440" y="578" width="150" height="44" rx="22" fill="#0a84ff"/>
+</svg>
