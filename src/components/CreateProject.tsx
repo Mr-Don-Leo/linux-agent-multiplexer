@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { NewProject, Provider } from "../types";
 import { CLAUDE_MODELS, CODEX_MODELS } from "../types";
+import Select from "./Select";
 
 interface Props {
   onCancel: () => void;
@@ -73,27 +74,25 @@ export default function CreateProject({ onCancel, onCreate }: Props) {
         <div className="row">
           <div className="field">
             <label>AI provider</label>
-            <select
-              className="select"
+            <Select
               value={provider}
-              onChange={(e) => {
-                setProvider(e.target.value as Provider);
+              options={[
+                { value: "claude", label: "Claude (Claude Code)" },
+                { value: "codex", label: "Codex" },
+              ]}
+              onChange={(value) => {
+                setProvider(value as Provider);
                 setModel("default");
               }}
-            >
-              <option value="claude">Claude (Claude Code)</option>
-              <option value="codex">Codex</option>
-            </select>
+            />
           </div>
           <div className="field">
             <label>Model</label>
-            <select className="select" value={model} onChange={(e) => setModel(e.target.value)}>
-              {models.map((m) => (
-                <option key={m} value={m}>
-                  {m}
-                </option>
-              ))}
-            </select>
+            <Select
+              value={model}
+              options={models.map((m) => ({ value: m, label: m }))}
+              onChange={setModel}
+            />
           </div>
         </div>
         <div className="field">

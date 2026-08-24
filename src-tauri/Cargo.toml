@@ -1,6 +1,6 @@
 [package]
 name = "agentmux"
-version = "0.3.0"
+version = "0.3.1"
 description = "AgentMux — lightweight Linux multiplexer for Claude Code and Codex agent sessions"
 authors = ["Mr-Don-Leo and contributors"]
 license = "MIT"

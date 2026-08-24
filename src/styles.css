@@ -1,6 +1,9 @@
 /* ---------- Design tokens ---------- */
 
 :root {
+  /* Native widget parts (select popups, scrollbars) follow the active theme. */
+  color-scheme: light;
+
   --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI",
     system-ui, sans-serif;
   --font-mono: "SF Mono", ui-monospace, "JetBrains Mono", "Fira Code", Menlo, monospace;
@@ -29,6 +32,8 @@
 }
 
 [data-theme="dark"] {
+  color-scheme: dark;
+
   --accent: #0a84ff;
   --accent-soft: rgba(10, 132, 255, 0.18);
   --danger: #ff453a;
@@ -291,6 +296,73 @@ textarea {
 .textarea:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+/* Native selects ignore CSS backgrounds unless appearance is disabled, which
+ * leaves white text on the OS's light control in dark themes. */
+.select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5 6 8l3.5-3.5' fill='none' stroke='%238e8e93' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  padding-right: 32px;
+  cursor: pointer;
+}
+
+.select option {
+  background: var(--bg-elevated);
+  color: var(--text);
+}
+
+.dropdown {
+  position: relative;
+}
+
+.dropdown-trigger {
+  width: 100%;
+  text-align: left;
+  color: var(--text);
+  font-size: inherit;
+}
+
+.dropdown-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 60;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-modal);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.dropdown-item {
+  border: none;
+  background: transparent;
+  text-align: left;
+  padding: 7px 10px;
+  border-radius: 6px;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.dropdown-item:hover {
+  background: var(--bg-hover);
+}
+
+.dropdown-item.selected {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
 }
 
 .textarea {

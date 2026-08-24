@@ -1,6 +1,6 @@
 {
   "name": "linux-agent-multiplexer",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "AgentMux — a lightweight Linux multiplexer for Claude Code and Codex agent sessions",
   "license": "MIT",
   "private": true,
