@@ -70,6 +70,9 @@ struct ChatSession {
     attached: bool,
     /// Completed protocol lines, replayed on attach.
     history: Vec<String>,
+    /// Transcript file (in the transcripts dir) once one has been written.
+    /// Saved at every turn boundary so restores survive crashes too.
+    transcript_file: Option<String>,
     started_at: u64,
 }
 
@@ -117,15 +120,37 @@ pub struct OpenSession {
     pub project_id: String,
     #[serde(default = "default_kind")]
     pub kind: String,
+    /// File name (in the transcripts dir) holding the session's protocol
+    /// history, written at app shutdown so restored sessions replay visually.
+    #[serde(default)]
+    pub transcript: Option<String>,
 }
 
 fn default_kind() -> String {
     "terminal".into()
 }
 
+fn transcripts_dir() -> PathBuf {
+    config_dir().join("transcripts")
+}
+
+pub fn load_transcript(name: &str) -> Vec<String> {
+    // The name is app-generated (session id), but never allow path escapes.
+    if name.contains('/') || name.contains("..") {
+        return Vec::new();
+    }
+    let path = transcripts_dir().join(name);
+    let lines = fs::read_to_string(&path)
+        .map(|s| s.lines().map(|l| l.to_string()).collect())
+        .unwrap_or_default();
+    let _ = fs::remove_file(&path);
+    lines
+}
+
 /// Read the sessions left open by the previous run, then clear the file so a
 /// crash mid-run doesn't duplicate the offer. The running app rewrites it as
-/// sessions come and go.
+/// sessions come and go. Transcript files not referenced by any entry are
+/// stale (dismissed restores, crashes) and get cleaned up here.
 pub fn take_restorable() -> Vec<OpenSession> {
     let path = open_sessions_file();
     let entries: Vec<OpenSession> = fs::read_to_string(&path)
@@ -133,6 +158,17 @@ pub fn take_restorable() -> Vec<OpenSession> {
         .and_then(|s| serde_json::from_str(&s).ok())
         .unwrap_or_default();
     let _ = fs::remove_file(&path);
+    if let Ok(dir) = fs::read_dir(transcripts_dir()) {
+        for file in dir.flatten() {
+            let name = file.file_name().to_string_lossy().to_string();
+            if !entries
+                .iter()
+                .any(|e| e.transcript.as_deref() == Some(&name))
+            {
+                let _ = fs::remove_file(file.path());
+            }
+        }
+    }
     entries
 }
 
@@ -267,6 +303,7 @@ impl SessionManager {
             .map(|s| OpenSession {
                 project_id: s.info.project_id.clone(),
                 kind: s.info.kind.clone(),
+                transcript: None,
             })
             .collect();
         entries.extend(
@@ -278,6 +315,7 @@ impl SessionManager {
                 .map(|s| OpenSession {
                     project_id: s.info.project_id.clone(),
                     kind: s.info.kind.clone(),
+                    transcript: s.transcript_file.clone(),
                 }),
         );
         let _ = fs::create_dir_all(config_dir());
@@ -476,10 +514,20 @@ impl SessionManager {
         app: &AppHandle,
         project: &Project,
         resume: bool,
+        transcript: Option<String>,
     ) -> Result<SessionInfo, String> {
+        // Restored sessions replay the previous run's transcript, followed by
+        // a divider marker.
+        let mut history = transcript
+            .as_deref()
+            .map(load_transcript)
+            .unwrap_or_default();
+        if !history.is_empty() {
+            history.push(serde_json::json!({"type": "restored"}).to_string());
+        }
         match project.provider {
-            Provider::Claude => self.create_claude_chat(app, project, resume),
-            Provider::Codex => self.create_codex_chat(project, resume),
+            Provider::Claude => self.create_claude_chat(app, project, resume, history),
+            Provider::Codex => self.create_codex_chat(project, resume, history),
         }
     }
 
@@ -488,6 +536,7 @@ impl SessionManager {
         app: &AppHandle,
         project: &Project,
         resume: bool,
+        history: Vec<String>,
     ) -> Result<SessionInfo, String> {
         let provider = Provider::Claude;
         let config = load_config();
@@ -547,7 +596,8 @@ impl SessionManager {
             info: info.clone(),
             engine: ChatEngine::Claude { stdin, child },
             attached: false,
-            history: Vec::new(),
+            history,
+            transcript_file: None,
             started_at: now_secs(),
         };
         self.chats.lock().unwrap().insert(id.clone(), session);
@@ -596,6 +646,7 @@ impl SessionManager {
         self: &Arc<Self>,
         project: &Project,
         resume: bool,
+        history: Vec<String>,
     ) -> Result<SessionInfo, String> {
         let provider = Provider::Codex;
         find_cli(cli_name(provider)).ok_or_else(|| {
@@ -630,7 +681,8 @@ impl SessionManager {
                 turn: None,
             },
             attached: false,
-            history: Vec::new(),
+            history,
+            transcript_file: None,
             started_at: now_secs(),
         };
         self.chats.lock().unwrap().insert(id.clone(), session);
@@ -664,8 +716,14 @@ impl SessionManager {
     fn push_chat_event(&self, app: &AppHandle, id: &str, line: String) {
         // Partial-message stream events are for live rendering only; keeping
         // them out of history keeps replays compact and duplicate-free.
-        let transient = line.starts_with("{\"type\":\"stream_event\"");
-        let emit = {
+        // Field order varies between events, so match anywhere in the line:
+        // the unescaped sequence cannot occur inside a JSON string value.
+        let transient = line.contains("\"type\":\"stream_event\"");
+        // Turn boundaries trigger a transcript snapshot so restores survive
+        // any kind of shutdown, including crashes and SIGKILL.
+        let turn_boundary =
+            line.contains("\"type\":\"result\"") || line.contains("\"type\":\"turn.completed\"");
+        let (emit, save) = {
             let mut chats = self.chats.lock().unwrap();
             match chats.get_mut(id) {
                 Some(session) => {
@@ -676,11 +734,26 @@ impl SessionManager {
                             session.history.drain(..excess);
                         }
                     }
-                    session.attached
+                    let save = if turn_boundary && !session.history.is_empty() {
+                        let name = format!("{}.jsonl", session.info.id);
+                        let _ = fs::create_dir_all(transcripts_dir());
+                        if fs::write(transcripts_dir().join(&name), session.history.join("\n"))
+                            .is_ok()
+                        {
+                            session.transcript_file = Some(name);
+                        }
+                        true
+                    } else {
+                        false
+                    };
+                    (session.attached, save)
                 }
-                None => false,
+                None => (false, false),
             }
         };
+        if save {
+            self.persist_open();
+        }
         if emit {
             let _ = app.emit(&format!("chat-event-{id}"), line);
         }
@@ -959,6 +1032,11 @@ impl SessionManager {
             let mut chats = self.chats.lock().unwrap();
             if let Some(mut session) = chats.remove(id) {
                 kill_chat_engine(&mut session.engine);
+                // Closed deliberately: this session is not restorable, so its
+                // transcript snapshot is no longer needed.
+                if let Some(name) = &session.transcript_file {
+                    let _ = fs::remove_file(transcripts_dir().join(name));
+                }
                 if session.info.running {
                     record_usage(
                         session.info.provider,
@@ -972,10 +1050,46 @@ impl SessionManager {
         Ok(())
     }
 
-    /// Kill every session at app shutdown. Deliberately does NOT clear the
-    /// open-sessions file: those sessions are what the next launch offers to
-    /// restore.
+    /// Kill every session at app shutdown. The open-sessions file is rewritten
+    /// (not cleared) with chat transcript snapshots so the next launch can
+    /// restore both the conversations and their visual history.
     pub fn kill_all(&self) {
+        {
+            let sessions = self.sessions.lock().unwrap();
+            let chats = self.chats.lock().unwrap();
+            let _ = fs::create_dir_all(transcripts_dir());
+            let mut entries: Vec<OpenSession> = sessions
+                .values()
+                .filter(|s| s.info.running && !s.info.project_id.is_empty())
+                .map(|s| OpenSession {
+                    project_id: s.info.project_id.clone(),
+                    kind: s.info.kind.clone(),
+                    transcript: None,
+                })
+                .collect();
+            for session in chats
+                .values()
+                .filter(|s| s.info.running && !s.info.project_id.is_empty())
+            {
+                let transcript = if session.history.is_empty() {
+                    None
+                } else {
+                    let name = format!("{}.jsonl", session.info.id);
+                    fs::write(transcripts_dir().join(&name), session.history.join("\n"))
+                        .ok()
+                        .map(|_| name)
+                };
+                entries.push(OpenSession {
+                    project_id: session.info.project_id.clone(),
+                    kind: session.info.kind.clone(),
+                    transcript,
+                });
+            }
+            let _ = fs::create_dir_all(config_dir());
+            if let Ok(json) = serde_json::to_string(&entries) {
+                let _ = fs::write(open_sessions_file(), json);
+            }
+        }
         self.shutting_down.store(true, Ordering::Relaxed);
         let mut sessions = self.sessions.lock().unwrap();
         for (_, mut session) in sessions.drain() {

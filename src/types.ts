@@ -75,6 +75,7 @@ export interface SessionInfo {
 export interface RestorableSession {
   projectId: string;
   kind: SessionKind;
+  transcript?: string | null;
 }
 
 export interface UsageRecord {

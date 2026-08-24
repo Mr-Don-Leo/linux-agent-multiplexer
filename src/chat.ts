@@ -219,6 +219,12 @@ export function reduceChatLine(state: ChatState, line: string): ReduceEffects {
       }
       break;
     }
+    case "restored": {
+      staleApprovals(state.items);
+      state.busy = false;
+      state.items.push({ kind: "info", text: "· Restored from previous run — the agent remembers this conversation ·" });
+      break;
+    }
     default:
       break;
   }
@@ -356,6 +362,11 @@ export function reduceCodexLine(state: ChatState, line: string): ReduceEffects {
       if (typeof event.text === "string" && !/^\s*$/.test(event.text)) {
         state.items.push({ kind: "info", text: event.text, error: true });
       }
+      break;
+    }
+    case "restored": {
+      state.busy = false;
+      state.items.push({ kind: "info", text: "· Restored from previous run — the agent remembers this conversation ·" });
       break;
     }
     default:

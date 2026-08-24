@@ -23,8 +23,12 @@ export const deleteProject = (id: string) => invoke<void>("delete_project", { id
 
 export const checkCli = (provider: Provider) => invoke<CliStatus>("check_cli", { provider });
 
-export const createSession = (projectId: string, resume = false, kind: SessionKind = "terminal") =>
-  invoke<SessionInfo>("session_create", { projectId, resume, kind });
+export const createSession = (
+  projectId: string,
+  resume = false,
+  kind: SessionKind = "terminal",
+  transcript?: string | null,
+) => invoke<SessionInfo>("session_create", { projectId, resume, kind, transcript: transcript ?? null });
 /** Sessions left open by the previous run. Consumed on first call. */
 export const restorableSessions = () => invoke<RestorableSession[]>("restorable_sessions");
 export const usageRecords = () => invoke<UsageRecord[]>("usage_records");

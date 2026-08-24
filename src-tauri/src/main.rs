@@ -100,11 +100,12 @@ fn session_create(
     project_id: String,
     resume: Option<bool>,
     kind: Option<String>,
+    transcript: Option<String>,
 ) -> Result<SessionInfo, String> {
     let project = find_project(&project_id)?;
     let resume = resume.unwrap_or(false);
     if kind.as_deref() == Some("chat") {
-        sessions.create_chat_for_project(&app, &project, resume)
+        sessions.create_chat_for_project(&app, &project, resume, transcript)
     } else {
         sessions.create_for_project(&app, &project, resume)
     }
@@ -236,13 +237,14 @@ fn main() {
             read_memory,
             write_memory,
         ])
-        .on_window_event(|window, event| {
-            if let tauri::WindowEvent::Destroyed = event {
-                // Terminate all agent processes when the app closes.
-                let sessions = window.state::<Arc<SessionManager>>();
+        .build(tauri::generate_context!())
+        .expect("error while running AgentMux")
+        .run(|app_handle, event| {
+            // Snapshot open sessions + transcripts and terminate all agent
+            // processes when the app exits.
+            if let tauri::RunEvent::Exit = event {
+                let sessions = app_handle.state::<Arc<SessionManager>>();
                 sessions.kill_all();
             }
-        })
-        .run(tauri::generate_context!())
-        .expect("error while running AgentMux");
+        });
 }

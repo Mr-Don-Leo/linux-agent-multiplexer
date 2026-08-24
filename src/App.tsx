@@ -188,7 +188,7 @@ export default function App() {
       const project = projects.find((p) => p.id === entry.projectId);
       if (!project) continue;
       try {
-        const session = await ipc.createSession(project.id, true, entry.kind);
+        const session = await ipc.createSession(project.id, true, entry.kind, entry.transcript);
         trackSession(session);
         restored.push(session.id);
       } catch {
