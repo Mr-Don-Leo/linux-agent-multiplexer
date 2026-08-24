@@ -93,9 +93,35 @@ fn session_create(
     app: AppHandle,
     sessions: Sessions<'_>,
     project_id: String,
+    resume: Option<bool>,
+    kind: Option<String>,
 ) -> Result<SessionInfo, String> {
     let project = find_project(&project_id)?;
-    sessions.create_for_project(&app, &project)
+    let resume = resume.unwrap_or(false);
+    if kind.as_deref() == Some("chat") {
+        sessions.create_chat_for_project(&app, &project, resume)
+    } else {
+        sessions.create_for_project(&app, &project, resume)
+    }
+}
+
+/// One raw stream-json protocol line (user message or control response) into a
+/// chat session.
+#[tauri::command]
+fn chat_send(sessions: Sessions<'_>, id: String, line: String) -> Result<(), String> {
+    sessions.chat_send(&id, &line)
+}
+
+/// Sessions left open by the previous run (one entry per session). Consumed on
+/// first call.
+#[tauri::command]
+fn restorable_sessions() -> Vec<session::OpenSession> {
+    session::take_restorable()
+}
+
+#[tauri::command]
+fn usage_records() -> Vec<session::UsageRecord> {
+    session::load_usage()
 }
 
 #[tauri::command]
@@ -175,6 +201,7 @@ fn write_memory(scope: String, content: String, project_id: Option<String>) -> R
 
 fn main() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_notification::init())
         .manage(Arc::new(SessionManager::default()))
         .invoke_handler(tauri::generate_handler![
             get_config,
@@ -191,6 +218,9 @@ fn main() {
             session_attach,
             session_detach,
             session_kill,
+            chat_send,
+            restorable_sessions,
+            usage_records,
             read_memory,
             write_memory,
         ])

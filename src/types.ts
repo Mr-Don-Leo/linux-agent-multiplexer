@@ -1,6 +1,13 @@
 export type Provider = "claude" | "codex";
 export type AuthMode = "subscription" | "api_key" | "none";
 export type Theme = "system" | "light" | "dark";
+export type Skin = "apple" | "cyberpunk" | "xp";
+
+export const SKINS: { id: Skin; name: string; blurb: string; hasModes: boolean }[] = [
+  { id: "apple", name: "Modern", blurb: "Clean, native, HIG-inspired", hasModes: true },
+  { id: "cyberpunk", name: "Cyberpunk", blurb: "Neon grid, retro-futurist", hasModes: false },
+  { id: "xp", name: "Retro XP", blurb: "Luna blue, 2001 nostalgia", hasModes: false },
+];
 
 export interface ProviderAuth {
   mode: AuthMode;
@@ -14,6 +21,8 @@ export interface AppConfig {
   /** Either a preset id ("preset:3") or a data URL for an uploaded image. */
   avatar: string;
   theme: Theme;
+  skin: Skin;
+  notifications: boolean;
   claude: ProviderAuth;
   codex: ProviderAuth;
 }
@@ -43,12 +52,27 @@ export interface NewProject {
   instructions?: string | null;
 }
 
+export type SessionKind = "chat" | "terminal";
+
 export interface SessionInfo {
   id: string;
   projectId: string;
   title: string;
   provider: Provider;
+  kind: SessionKind;
   running: boolean;
+}
+
+export interface RestorableSession {
+  projectId: string;
+  kind: SessionKind;
+}
+
+export interface UsageRecord {
+  provider: Provider;
+  projectId: string;
+  startedAt: number;
+  seconds: number;
 }
 
 export interface CliStatus {

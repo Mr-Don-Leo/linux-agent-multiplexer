@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import type { AppConfig, AuthMode, CliStatus, Provider } from "../types";
+import type { AppConfig, AuthMode, CliStatus, Provider, Skin } from "../types";
 import { checkCli, createLoginSession, killSession, saveConfig } from "../ipc";
 import Avatar, { PRESET_IDS } from "../components/Avatar";
 import Terminal from "../components/Terminal";
 
 interface Props {
   config: AppConfig;
+  skin: Skin;
   dark: boolean;
   onDone: (config: AppConfig) => void;
 }
@@ -19,12 +20,14 @@ function ProviderSetup({
   provider,
   mode,
   apiKey,
+  skin,
   dark,
   onChange,
 }: {
   provider: Provider;
   mode: AuthMode;
   apiKey: string;
+  skin: Skin;
   dark: boolean;
   onChange: (mode: AuthMode, apiKey: string) => void;
 }) {
@@ -75,7 +78,12 @@ function ProviderSetup({
           {loginSessionId ? (
             <>
               <div className="login-terminal card">
-                <Terminal sessionId={loginSessionId} dark={dark} onExit={() => setLoginSessionId(null)} />
+                <Terminal
+                  sessionId={loginSessionId}
+                  skin={skin}
+                  dark={dark}
+                  onExit={() => setLoginSessionId(null)}
+                />
               </div>
               <button className="btn btn-ghost" onClick={closeLogin}>
                 Close login terminal
@@ -106,7 +114,7 @@ function ProviderSetup({
   );
 }
 
-export default function Onboarding({ config, dark, onDone }: Props) {
+export default function Onboarding({ config, skin, dark, onDone }: Props) {
   const [username, setUsername] = useState(config.username);
   const [avatar, setAvatar] = useState(config.avatar || PRESET_IDS[0]);
   const [claudeMode, setClaudeMode] = useState<AuthMode>(config.claude.mode);
@@ -196,6 +204,7 @@ export default function Onboarding({ config, dark, onDone }: Props) {
           provider="claude"
           mode={claudeMode}
           apiKey={claudeKey}
+          skin={skin}
           dark={dark}
           onChange={(m, k) => {
             setClaudeMode(m);
@@ -206,6 +215,7 @@ export default function Onboarding({ config, dark, onDone }: Props) {
           provider="codex"
           mode={codexMode}
           apiKey={codexKey}
+          skin={skin}
           dark={dark}
           onChange={(m, k) => {
             setCodexMode(m);

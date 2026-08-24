@@ -1,6 +1,6 @@
 [package]
 name = "agentmux"
-version = "0.1.0"
+version = "0.2.0"
 description = "AgentMux — lightweight Linux multiplexer for Claude Code and Codex agent sessions"
 authors = ["Mr-Don-Leo and contributors"]
 license = "MIT"
@@ -12,6 +12,7 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = [] }
+tauri-plugin-notification = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 portable-pty = "0.9"

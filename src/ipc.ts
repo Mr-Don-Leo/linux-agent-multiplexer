@@ -1,6 +1,16 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { AppConfig, CliStatus, NewProject, Project, Provider, SessionInfo } from "./types";
+import type {
+  AppConfig,
+  CliStatus,
+  NewProject,
+  Project,
+  Provider,
+  RestorableSession,
+  SessionInfo,
+  SessionKind,
+  UsageRecord,
+} from "./types";
 
 export const getConfig = () => invoke<AppConfig>("get_config");
 export const saveConfig = (config: AppConfig) => invoke<void>("save_config", { config });
@@ -11,8 +21,11 @@ export const deleteProject = (id: string) => invoke<void>("delete_project", { id
 
 export const checkCli = (provider: Provider) => invoke<CliStatus>("check_cli", { provider });
 
-export const createSession = (projectId: string) =>
-  invoke<SessionInfo>("session_create", { projectId });
+export const createSession = (projectId: string, resume = false, kind: SessionKind = "terminal") =>
+  invoke<SessionInfo>("session_create", { projectId, resume, kind });
+/** Sessions left open by the previous run. Consumed on first call. */
+export const restorableSessions = () => invoke<RestorableSession[]>("restorable_sessions");
+export const usageRecords = () => invoke<UsageRecord[]>("usage_records");
 export const createLoginSession = (provider: Provider) =>
   invoke<SessionInfo>("session_create_login", { provider });
 export const listSessions = () => invoke<SessionInfo[]>("session_list");
@@ -41,6 +54,19 @@ export const onSessionOutput = (id: string, handler: (bytes: Uint8Array) => void
 
 export const onSessionExit = (id: string, handler: () => void): Promise<UnlistenFn> =>
   listen(`session-exit-${id}`, () => handler());
+
+/** Write one raw stream-json protocol line into a chat session. */
+export const chatSend = (id: string, line: string) => invoke<void>("chat_send", { id, line });
+
+/** Live protocol lines from a chat session (subscribe before attachSession). */
+export const onChatEvent = (id: string, handler: (line: string) => void): Promise<UnlistenFn> =>
+  listen<string>(`chat-event-${id}`, (event) => handler(event.payload));
+
+/** Full protocol history replay, sent once in response to attachSession. */
+export const onChatHistory = (
+  id: string,
+  handler: (lines: string[]) => void,
+): Promise<UnlistenFn> => listen<string[]>(`chat-history-${id}`, (event) => handler(event.payload));
 
 export function encodeInput(data: string): string {
   const bytes = new TextEncoder().encode(data);

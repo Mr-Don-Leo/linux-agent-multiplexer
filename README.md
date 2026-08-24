@@ -11,8 +11,14 @@ Built with [Tauri 2](https://tauri.app) (Rust backend, system webview), so the a
 - **Onboarding** — pick a username and profile picture, then connect Claude and/or Codex via your existing subscription (CLI sign-in) or an API key. You can also skip and set it up later.
 - **Project explorer** — a home screen of project tiles. Create a project with an agent name, optional GitHub repo (cloned for you), optional domain/subdomain and port, a provider (Claude / Codex), a model, and custom instructions.
 - **True multiplexing** — every session is a real PTY running the agent CLI. Open as many sessions as you like, across different projects, at the same time; agent questions, permission prompts, and interactive dialogs render exactly as they do in a terminal.
+- **Chat mode** — Claude sessions open as a native chat: your messages and the agent's replies as bubbles, its thinking process as collapsible bubbles, tool calls as expandable cards with inputs and results, and permission requests as inline **Allow / Deny** cards driven by Claude Code's structured stream-json protocol (exact, not parsed from terminal output). A typing indicator, Stop/interrupt button, and per-turn duration/cost round it out.
+- **Terminal mode** — every project can also open classic PTY sessions (the default for Codex); numbered menus in terminal output are additionally surfaced as heuristic approval cards above the pane.
+- **Split view** — up to four sessions visible side by side in a grid; click a session's ⊞ to add it to the split.
+- **Session persistence** — sessions open when you quit are offered for restore on the next launch, resuming the agent conversation via `claude --continue` / `codex resume --last`.
 - **Agent memory** — a per-session Memory panel to view and edit the project memory file (`CLAUDE.md` / `AGENTS.md`) and your global memory, plus one-click context compaction (`/compact`).
-- **Dark & light mode** — follows your system by default, toggleable in-app. More themes are planned.
+- **Theme gallery** — Modern (HIG-inspired, light/dark/system), Cyberpunk (neon grid), and Retro XP (Luna nostalgia). Skins are pure CSS tokens, so adding more is easy.
+- **Notifications** — a desktop notification fires when a background session asks a question or ends.
+- **Usage overview** — sessions and time per provider and per project for the last 7 days.
 
 ## Install
 
@@ -60,12 +66,14 @@ npm run tauri build   # produces .deb / .rpm / .AppImage in src-tauri/target/rel
 
 ## Roadmap
 
-- [ ] More themes (including a cyberpunk one)
-- [ ] Split view: multiple terminals visible side by side
-- [ ] Structured approval UI (parse agent permission prompts into native dialogs)
-- [ ] Session persistence across app restarts
-- [ ] Usage/cost overview per provider
+- [ ] User-defined themes
+- [ ] Drag-to-rearrange split panes
+- [ ] Cost estimates in the usage overview
 - [ ] Flatpak / AUR packaging
+
+## A note on Apple design resources
+
+The UI follows Apple's Human Interface Guidelines, and the font stack prefers `SF Pro Text` / `SF Mono` when installed locally. Apple's design resources (SF fonts, SF Symbols) are **not** bundled because their license doesn't permit redistribution; the app falls back to your system fonts.
 
 Contributions welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
 

@@ -1,7 +1,9 @@
 import { useState } from "react";
-import type { AppConfig, NewProject, Project, Theme } from "../types";
+import type { AppConfig, NewProject, Project, Skin, Theme } from "../types";
 import Avatar from "../components/Avatar";
 import CreateProject from "../components/CreateProject";
+import ThemeGallery from "../components/ThemeGallery";
+import UsagePanel from "../components/UsagePanel";
 
 interface Props {
   config: AppConfig;
@@ -10,6 +12,10 @@ interface Props {
   onDelete: (id: string) => void;
   onOpen: (project: Project) => void;
   onTheme: (theme: Theme) => void;
+  onSkin: (skin: Skin) => void;
+  restorableCount: number;
+  onRestore: () => void;
+  onDismissRestore: () => void;
   activeSessionCount: number;
   onGoWorkspace: () => void;
 }
@@ -36,10 +42,16 @@ export default function Home({
   onDelete,
   onOpen,
   onTheme,
+  onSkin,
+  restorableCount,
+  onRestore,
+  onDismissRestore,
   activeSessionCount,
   onGoWorkspace,
 }: Props) {
   const [creating, setCreating] = useState(false);
+  const [showThemes, setShowThemes] = useState(false);
+  const [showUsage, setShowUsage] = useState(false);
 
   return (
     <div className="home">
@@ -55,15 +67,33 @@ export default function Home({
               {activeSessionCount} running session{activeSessionCount > 1 ? "s" : ""} →
             </button>
           )}
+          <button className="btn btn-ghost" title="Usage" onClick={() => setShowUsage(true)}>
+            Usage
+          </button>
           <button
             className="btn btn-ghost"
-            title="Toggle theme"
-            onClick={() => onTheme(config.theme === "dark" ? "light" : "dark")}
+            title="Appearance"
+            onClick={() => setShowThemes(true)}
           >
-            {config.theme === "dark" ? "☀︎" : "☾"}
+            Themes
           </button>
         </div>
       </header>
+
+      {restorableCount > 0 && (
+        <div className="restore-banner card">
+          <span className="grow">
+            {restorableCount} session{restorableCount > 1 ? "s were" : " was"} open last time.
+            Resume where the agents left off?
+          </span>
+          <button className="btn btn-primary" onClick={onRestore}>
+            Restore
+          </button>
+          <button className="btn btn-ghost" onClick={onDismissRestore}>
+            Dismiss
+          </button>
+        </div>
+      )}
 
       <div className="project-grid">
         {projects.map((p) => (
@@ -90,7 +120,12 @@ export default function Home({
                   {p.agentName} · {p.provider === "claude" ? "Claude" : "Codex"}
                   {p.model ? ` · ${p.model}` : ""}
                 </span>
-                {p.domain && <span>{p.domain}{p.port ? `:${p.port}` : ""}</span>}
+                {p.domain && (
+                  <span>
+                    {p.domain}
+                    {p.port ? `:${p.port}` : ""}
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -111,6 +146,16 @@ export default function Home({
           }}
         />
       )}
+      {showThemes && (
+        <ThemeGallery
+          skin={config.skin}
+          theme={config.theme}
+          onSelect={onSkin}
+          onTheme={onTheme}
+          onClose={() => setShowThemes(false)}
+        />
+      )}
+      {showUsage && <UsagePanel projects={projects} onClose={() => setShowUsage(false)} />}
     </div>
   );
 }

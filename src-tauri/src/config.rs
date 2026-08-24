@@ -34,6 +34,10 @@ impl Default for ProviderAuth {
     }
 }
 
+fn default_skin() -> String {
+    "apple".into()
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppConfig {
@@ -41,10 +45,19 @@ pub struct AppConfig {
     pub username: String,
     pub avatar: String,
     pub theme: String,
+    /// Visual skin: "apple" | "cyberpunk" | "xp"
+    #[serde(default = "default_skin")]
+    pub skin: String,
+    #[serde(default = "default_true")]
+    pub notifications: bool,
     #[serde(default)]
     pub claude: ProviderAuth,
     #[serde(default)]
     pub codex: ProviderAuth,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 impl Default for AppConfig {
@@ -54,6 +67,8 @@ impl Default for AppConfig {
             username: String::new(),
             avatar: "preset:0".into(),
             theme: "system".into(),
+            skin: default_skin(),
+            notifications: true,
             claude: ProviderAuth::default(),
             codex: ProviderAuth::default(),
         }
