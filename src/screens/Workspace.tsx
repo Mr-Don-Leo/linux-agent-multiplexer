@@ -70,6 +70,25 @@ export default function Workspace({
     onPrompt(sessionId, null);
   };
 
+  /** Drop payloads: "pane:<id>" reorders panes, "session:<id>" swaps one in. */
+  const handleDrop = (targetId: string, data: string) => {
+    const [type, id] = data.split(":", 2);
+    if (!id || id === targetId) return;
+    if (type === "pane" && panes.includes(id)) {
+      const next = [...panes];
+      const from = next.indexOf(id);
+      const to = next.indexOf(targetId);
+      if (from === -1 || to === -1) return;
+      [next[from], next[to]] = [next[to], next[from]];
+      onPanesChange(next, id);
+    } else if (type === "session" && !panes.includes(id)) {
+      onPanesChange(
+        panes.map((p) => (p === targetId ? id : p)),
+        id,
+      );
+    }
+  };
+
   return (
     <div className="workspace">
       <aside className="sidebar">
@@ -86,6 +105,8 @@ export default function Workspace({
               className={"session-item" + (panes.includes(s.id) ? " active" : "")}
               onClick={() => selectSolo(s.id)}
               title={s.title}
+              draggable
+              onDragStart={(e) => e.dataTransfer.setData("text/plain", `session:${s.id}`)}
             >
               <span className={"dot" + (s.running ? "" : " dead")} />
               <span className="session-title">{s.title}</span>
@@ -130,15 +151,13 @@ export default function Workspace({
         >
           {focusedProject && (
             <>
-              {focusedProject.provider === "claude" && (
-                <button
-                  className="btn"
-                  style={{ width: "100%" }}
-                  onClick={() => onNewSession(focusedProject, "chat")}
-                >
-                  + Chat · {focusedProject.name}
-                </button>
-              )}
+              <button
+                className="btn"
+                style={{ width: "100%" }}
+                onClick={() => onNewSession(focusedProject, "chat")}
+              >
+                + Chat · {focusedProject.name}
+              </button>
               <button
                 className="btn"
                 style={{ width: "100%" }}
@@ -184,9 +203,21 @@ export default function Workspace({
                       key={id}
                       className={"pane" + (id === focusedId ? " focused" : "")}
                       onMouseDown={() => onPanesChange(panes, id)}
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        handleDrop(id, e.dataTransfer.getData("text/plain"));
+                      }}
                     >
                       {panes.length > 1 && (
-                        <div className="pane-head">
+                        <div
+                          className="pane-head"
+                          draggable
+                          onDragStart={(e) =>
+                            e.dataTransfer.setData("text/plain", `pane:${id}`)
+                          }
+                          title="Drag to rearrange"
+                        >
                           <span className={"dot" + (session.running ? "" : " dead")} />
                           <span className="pane-title">{session.title}</span>
                           <button title="Remove from split" onClick={() => closePane(id)}>
@@ -197,6 +228,7 @@ export default function Workspace({
                       {session.kind === "chat" ? (
                         <ChatView
                           sessionId={id}
+                          provider={session.provider}
                           running={session.running}
                           onAttention={(text) => onAttention(id, text)}
                         />

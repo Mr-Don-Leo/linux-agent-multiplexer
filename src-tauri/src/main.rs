@@ -105,11 +105,16 @@ fn session_create(
     }
 }
 
-/// One raw stream-json protocol line (user message or control response) into a
-/// chat session.
+/// One chat protocol line: raw stream-json for Claude sessions, or a
+/// {"type":"user_text"|"interrupt"} control value for Codex sessions.
 #[tauri::command]
-fn chat_send(sessions: Sessions<'_>, id: String, line: String) -> Result<(), String> {
-    sessions.chat_send(&id, &line)
+fn chat_send(
+    app: AppHandle,
+    sessions: Sessions<'_>,
+    id: String,
+    line: String,
+) -> Result<(), String> {
+    sessions.chat_send(&app, &id, &line)
 }
 
 /// Sessions left open by the previous run (one entry per session). Consumed on
@@ -202,6 +207,7 @@ fn write_memory(scope: String, content: String, project_id: Option<String>) -> R
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_opener::init())
         .manage(Arc::new(SessionManager::default()))
         .invoke_handler(tauri::generate_handler![
             get_config,

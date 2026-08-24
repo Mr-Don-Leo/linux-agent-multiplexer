@@ -43,12 +43,30 @@ struct Session {
     started_at: u64,
 }
 
-/// A structured chat session: `claude -p` speaking the bidirectional
-/// stream-json protocol over plain pipes. Lines of JSON in both directions.
+/// Provider-specific engine behind a chat session.
+enum ChatEngine {
+    /// Long-lived `claude -p` process speaking bidirectional stream-json.
+    Claude {
+        stdin: std::process::ChildStdin,
+        child: std::process::Child,
+    },
+    /// Per-turn `codex exec --json` processes; continuity via thread resume.
+    Codex {
+        cwd: PathBuf,
+        model: Option<String>,
+        api_key: Option<String>,
+        /// Captured from the first turn's thread.started event.
+        thread_id: Option<String>,
+        /// Restored session: resume the most recent codex thread on first turn.
+        resume_last: bool,
+        turn: Option<std::process::Child>,
+    },
+}
+
+/// A structured chat session rendered as bubbles in the UI.
 struct ChatSession {
     info: SessionInfo,
-    stdin: std::process::ChildStdin,
-    child: std::process::Child,
+    engine: ChatEngine,
     attached: bool,
     /// Completed protocol lines, replayed on attach.
     history: Vec<String>,
@@ -63,6 +81,21 @@ pub struct SessionManager {
     chats: Mutex<HashMap<String, ChatSession>>,
     counter: AtomicU64,
     shutting_down: AtomicBool,
+}
+
+fn kill_chat_engine(engine: &mut ChatEngine) {
+    match engine {
+        ChatEngine::Claude { child, .. } => {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+        ChatEngine::Codex { turn, .. } => {
+            if let Some(child) = turn.as_mut() {
+                let _ = child.kill();
+                let _ = child.wait();
+            }
+        }
+    }
 }
 
 fn now_secs() -> u64 {
@@ -186,6 +219,20 @@ fn api_key_env(provider: Provider) -> &'static str {
     match provider {
         Provider::Claude => "ANTHROPIC_API_KEY",
         Provider::Codex => "OPENAI_API_KEY",
+    }
+}
+
+fn apply_std_auth(cmd: &mut std::process::Command, provider: Provider, auth: &ProviderAuth) {
+    match auth.mode {
+        AuthMode::ApiKey => {
+            if let Some(key) = auth.api_key.as_deref().filter(|k| !k.is_empty()) {
+                cmd.env(api_key_env(provider), key);
+            }
+        }
+        AuthMode::Subscription => {
+            cmd.env_remove(api_key_env(provider));
+        }
+        AuthMode::None => {}
     }
 }
 
@@ -430,10 +477,19 @@ impl SessionManager {
         project: &Project,
         resume: bool,
     ) -> Result<SessionInfo, String> {
-        let provider = project.provider;
-        if provider != Provider::Claude {
-            return Err("Chat mode is currently available for Claude sessions only".into());
+        match project.provider {
+            Provider::Claude => self.create_claude_chat(app, project, resume),
+            Provider::Codex => self.create_codex_chat(project, resume),
         }
+    }
+
+    fn create_claude_chat(
+        self: &Arc<Self>,
+        app: &AppHandle,
+        project: &Project,
+        resume: bool,
+    ) -> Result<SessionInfo, String> {
+        let provider = Provider::Claude;
         let config = load_config();
         let cli = find_cli(cli_name(provider)).ok_or_else(|| {
             format!(
@@ -453,7 +509,10 @@ impl SessionManager {
             .arg("stdio")
             // Echo user messages back on stdout so they land in the history
             // replayed to re-mounted chat views.
-            .arg("--replay-user-messages");
+            .arg("--replay-user-messages")
+            // Word-by-word streaming; partial events are emitted live but kept
+            // out of the replay history.
+            .arg("--include-partial-messages");
         if resume {
             cmd.arg("--continue");
         }
@@ -462,18 +521,7 @@ impl SessionManager {
         }
         cmd.current_dir(&project.path);
         cmd.env("TERM", "dumb");
-        let auth = &config.claude;
-        match auth.mode {
-            AuthMode::ApiKey => {
-                if let Some(key) = auth.api_key.as_deref().filter(|k| !k.is_empty()) {
-                    cmd.env(api_key_env(provider), key);
-                }
-            }
-            AuthMode::Subscription => {
-                cmd.env_remove(api_key_env(provider));
-            }
-            AuthMode::None => {}
-        }
+        apply_std_auth(&mut cmd, provider, &config.claude);
         cmd.stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped());
@@ -497,8 +545,7 @@ impl SessionManager {
 
         let session = ChatSession {
             info: info.clone(),
-            stdin,
-            child,
+            engine: ChatEngine::Claude { stdin, child },
             attached: false,
             history: Vec::new(),
             started_at: now_secs(),
@@ -506,25 +553,10 @@ impl SessionManager {
         self.chats.lock().unwrap().insert(id.clone(), session);
         self.persist_open();
 
-        // Surface agent stderr as synthetic protocol events.
-        {
-            let manager = Arc::clone(self);
-            let app = app.clone();
-            let session_id = id.clone();
-            std::thread::spawn(move || {
-                use std::io::BufRead;
-                let reader = std::io::BufReader::new(stderr);
-                for line in reader.lines().map_while(Result::ok) {
-                    if line.trim().is_empty() {
-                        continue;
-                    }
-                    let event = serde_json::json!({"type": "stderr", "text": line}).to_string();
-                    manager.push_chat_event(&app, &session_id, event);
-                }
-            });
-        }
+        self.spawn_stderr_forwarder(app, &id, stderr);
 
-        // Stream protocol lines to the frontend.
+        // Stream protocol lines to the frontend; the session ends with the
+        // long-lived claude process.
         let manager = Arc::clone(self);
         let app = app.clone();
         let session_id = id;
@@ -541,7 +573,9 @@ impl SessionManager {
                 let mut chats = manager.chats.lock().unwrap();
                 if let Some(session) = chats.get_mut(&session_id) {
                     session.info.running = false;
-                    let _ = session.child.wait();
+                    if let ChatEngine::Claude { child, .. } = &mut session.engine {
+                        let _ = child.wait();
+                    }
                     record_usage(
                         session.info.provider,
                         &session.info.project_id,
@@ -556,15 +590,91 @@ impl SessionManager {
         Ok(info)
     }
 
+    /// Codex chat sessions have no long-lived process; each user turn runs
+    /// `codex exec --json`, resuming the captured thread id.
+    fn create_codex_chat(
+        self: &Arc<Self>,
+        project: &Project,
+        resume: bool,
+    ) -> Result<SessionInfo, String> {
+        let provider = Provider::Codex;
+        find_cli(cli_name(provider)).ok_or_else(|| {
+            format!(
+                "The `{}` CLI was not found. Install it first, then try again.",
+                cli_name(provider)
+            )
+        })?;
+        let config = load_config();
+        let api_key = match config.codex.mode {
+            AuthMode::ApiKey => config.codex.api_key.clone().filter(|k| !k.is_empty()),
+            _ => None,
+        };
+
+        let id = self.next_id("c");
+        let info = SessionInfo {
+            id: id.clone(),
+            project_id: project.id.clone(),
+            title: self.session_title(project),
+            provider,
+            kind: "chat".into(),
+            running: true,
+        };
+        let session = ChatSession {
+            info: info.clone(),
+            engine: ChatEngine::Codex {
+                cwd: PathBuf::from(&project.path),
+                model: project.model.clone().filter(|m| !m.is_empty()),
+                api_key,
+                thread_id: None,
+                resume_last: resume,
+                turn: None,
+            },
+            attached: false,
+            history: Vec::new(),
+            started_at: now_secs(),
+        };
+        self.chats.lock().unwrap().insert(id.clone(), session);
+        self.persist_open();
+        Ok(info)
+    }
+
+    fn spawn_stderr_forwarder(
+        self: &Arc<Self>,
+        app: &AppHandle,
+        id: &str,
+        stderr: std::process::ChildStderr,
+    ) {
+        let manager = Arc::clone(self);
+        let app = app.clone();
+        let session_id = id.to_string();
+        std::thread::spawn(move || {
+            use std::io::BufRead;
+            let reader = std::io::BufReader::new(stderr);
+            for line in reader.lines().map_while(Result::ok) {
+                // Skip startup noise the CLIs print when stdin is not a TTY.
+                if line.trim().is_empty() || line.contains("Reading additional input from stdin") {
+                    continue;
+                }
+                let event = serde_json::json!({"type": "stderr", "text": line}).to_string();
+                manager.push_chat_event(&app, &session_id, event);
+            }
+        });
+    }
+
     fn push_chat_event(&self, app: &AppHandle, id: &str, line: String) {
+        // Partial-message stream events are for live rendering only; keeping
+        // them out of history keeps replays compact and duplicate-free.
+        let transient = line.starts_with("{\"type\":\"stream_event\"");
         let emit = {
             let mut chats = self.chats.lock().unwrap();
             match chats.get_mut(id) {
                 Some(session) => {
-                    session.history.push(line.clone());
-                    if session.history.len() > CHAT_HISTORY_LIMIT {
-                        let excess = session.history.len() - CHAT_HISTORY_LIMIT;
-                        session.history.drain(..excess);
+                    if !transient {
+                        session.history.push(line.clone());
+                        if session.history.len() > CHAT_HISTORY_LIMIT {
+                            let excess = session.history.len() - CHAT_HISTORY_LIMIT;
+                            session.history.drain(..excess);
+                        }
                     }
                     session.attached
                 }
@@ -576,17 +686,148 @@ impl SessionManager {
         }
     }
 
-    /// Write one raw protocol line (user message or control response) to a
-    /// chat session's stdin.
-    pub fn chat_send(&self, id: &str, line: &str) -> Result<(), String> {
+    /// Handle one frontend line for a chat session. Claude: raw stream-json
+    /// passthrough. Codex: {"type":"user_text"|"interrupt"} control values.
+    pub fn chat_send(
+        self: &Arc<Self>,
+        app: &AppHandle,
+        id: &str,
+        line: &str,
+    ) -> Result<(), String> {
         let mut chats = self.chats.lock().unwrap();
         let session = chats.get_mut(id).ok_or("No such session")?;
-        session
-            .stdin
-            .write_all(line.as_bytes())
-            .and_then(|_| session.stdin.write_all(b"\n"))
-            .and_then(|_| session.stdin.flush())
-            .map_err(|e| e.to_string())
+        match &mut session.engine {
+            ChatEngine::Claude { stdin, .. } => stdin
+                .write_all(line.as_bytes())
+                .and_then(|_| stdin.write_all(b"\n"))
+                .and_then(|_| stdin.flush())
+                .map_err(|e| e.to_string()),
+            ChatEngine::Codex { turn, .. } => {
+                let value: serde_json::Value =
+                    serde_json::from_str(line).map_err(|e| e.to_string())?;
+                match value.get("type").and_then(|t| t.as_str()) {
+                    Some("user_text") => {
+                        let text = value
+                            .get("text")
+                            .and_then(|t| t.as_str())
+                            .ok_or("Missing text")?
+                            .to_string();
+                        if turn.is_some() {
+                            return Err("The agent is still working on the previous turn".into());
+                        }
+                        drop(chats);
+                        self.start_codex_turn(app, id, text)
+                    }
+                    Some("interrupt") => {
+                        if let Some(child) = turn.as_mut() {
+                            let _ = child.kill();
+                        }
+                        Ok(())
+                    }
+                    _ => Err("Unknown codex chat message".into()),
+                }
+            }
+        }
+    }
+
+    fn start_codex_turn(
+        self: &Arc<Self>,
+        app: &AppHandle,
+        id: &str,
+        text: String,
+    ) -> Result<(), String> {
+        let cli = find_cli("codex").ok_or("The `codex` CLI was not found")?;
+        let mut cmd = std::process::Command::new(cli);
+        {
+            let mut chats = self.chats.lock().unwrap();
+            let session = chats.get_mut(id).ok_or("No such session")?;
+            let ChatEngine::Codex {
+                cwd,
+                model,
+                api_key,
+                thread_id,
+                resume_last,
+                ..
+            } = &session.engine
+            else {
+                return Err("Not a codex chat session".into());
+            };
+            cmd.arg("exec");
+            if let Some(thread) = thread_id {
+                cmd.arg("resume").arg(thread);
+            } else if *resume_last {
+                cmd.arg("resume").arg("--last");
+            } else if let Some(model) = model {
+                cmd.arg("-m").arg(model);
+            }
+            cmd.arg("--json").arg("--skip-git-repo-check").arg(&text);
+            cmd.current_dir(cwd);
+            if let Some(key) = api_key {
+                cmd.env("OPENAI_API_KEY", key);
+            }
+            cmd.stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped());
+        }
+
+        let mut child = cmd
+            .spawn()
+            .map_err(|e| format!("Failed to start codex: {e}"))?;
+        let stdout = child.stdout.take().ok_or("Failed to open codex stdout")?;
+        let stderr = child.stderr.take().ok_or("Failed to open codex stderr")?;
+
+        // Echo the user message into history so replays include it.
+        self.push_chat_event(
+            app,
+            id,
+            serde_json::json!({"type": "user_echo", "text": text}).to_string(),
+        );
+
+        {
+            let mut chats = self.chats.lock().unwrap();
+            let session = chats.get_mut(id).ok_or("No such session")?;
+            if let ChatEngine::Codex { turn, .. } = &mut session.engine {
+                *turn = Some(child);
+            }
+        }
+        self.spawn_stderr_forwarder(app, id, stderr);
+
+        let manager = Arc::clone(self);
+        let app = app.clone();
+        let session_id = id.to_string();
+        std::thread::spawn(move || {
+            use std::io::BufRead;
+            let reader = std::io::BufReader::new(stdout);
+            for line in reader.lines().map_while(Result::ok) {
+                if line.trim().is_empty() {
+                    continue;
+                }
+                // Capture the thread id from the first turn for precise resume.
+                if line.starts_with("{\"type\":\"thread.started\"") {
+                    if let Ok(value) = serde_json::from_str::<serde_json::Value>(&line) {
+                        if let Some(thread) = value.get("thread_id").and_then(|t| t.as_str()) {
+                            let mut chats = manager.chats.lock().unwrap();
+                            if let Some(session) = chats.get_mut(&session_id) {
+                                if let ChatEngine::Codex { thread_id, .. } = &mut session.engine {
+                                    *thread_id = Some(thread.to_string());
+                                }
+                            }
+                        }
+                    }
+                }
+                manager.push_chat_event(&app, &session_id, line);
+            }
+            // Turn over: reap the child; the session itself stays alive.
+            let mut chats = manager.chats.lock().unwrap();
+            if let Some(session) = chats.get_mut(&session_id) {
+                if let ChatEngine::Codex { turn, .. } = &mut session.engine {
+                    if let Some(mut child) = turn.take() {
+                        let _ = child.wait();
+                    }
+                }
+            }
+        });
+        Ok(())
     }
 
     /// Spawn a terminal running the provider's interactive login flow.
@@ -717,8 +958,7 @@ impl SessionManager {
         {
             let mut chats = self.chats.lock().unwrap();
             if let Some(mut session) = chats.remove(id) {
-                let _ = session.child.kill();
-                let _ = session.child.wait();
+                kill_chat_engine(&mut session.engine);
                 if session.info.running {
                     record_usage(
                         session.info.provider,
@@ -751,8 +991,7 @@ impl SessionManager {
         drop(sessions);
         let mut chats = self.chats.lock().unwrap();
         for (_, mut session) in chats.drain() {
-            let _ = session.child.kill();
-            let _ = session.child.wait();
+            kill_chat_engine(&mut session.engine);
             if session.info.running {
                 record_usage(
                     session.info.provider,

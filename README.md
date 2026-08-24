@@ -11,9 +11,9 @@ Built with [Tauri 2](https://tauri.app) (Rust backend, system webview), so the a
 - **Onboarding** — pick a username and profile picture, then connect Claude and/or Codex via your existing subscription (CLI sign-in) or an API key. You can also skip and set it up later.
 - **Project explorer** — a home screen of project tiles. Create a project with an agent name, optional GitHub repo (cloned for you), optional domain/subdomain and port, a provider (Claude / Codex), a model, and custom instructions.
 - **True multiplexing** — every session is a real PTY running the agent CLI. Open as many sessions as you like, across different projects, at the same time; agent questions, permission prompts, and interactive dialogs render exactly as they do in a terminal.
-- **Chat mode** — Claude sessions open as a native chat: your messages and the agent's replies as bubbles, its thinking process as collapsible bubbles, tool calls as expandable cards with inputs and results, and permission requests as inline **Allow / Deny** cards driven by Claude Code's structured stream-json protocol (exact, not parsed from terminal output). A typing indicator, Stop/interrupt button, and per-turn duration/cost round it out.
-- **Terminal mode** — every project can also open classic PTY sessions (the default for Codex); numbered menus in terminal output are additionally surfaced as heuristic approval cards above the pane.
-- **Split view** — up to four sessions visible side by side in a grid; click a session's ⊞ to add it to the split.
+- **Chat mode** — sessions open as a native chat for **both Claude and Codex**: your messages and the agent's replies as markdown bubbles (headings, lists, tables, code blocks, clickable links), the thinking process as collapsible bubbles, tool calls as expandable cards with inputs and results, and — for Claude — permission requests as inline **Allow / Deny** cards driven by Claude Code's structured stream-json protocol (exact, not parsed from terminal output). Claude responses stream word by word; Codex turns run through `codex exec --json` with thread-id continuity and are safeguarded by Codex's sandbox instead of interactive approvals.
+- **Terminal mode** — every project can also open classic PTY sessions; numbered menus in terminal output are additionally surfaced as heuristic approval cards above the pane.
+- **Split view** — up to four sessions visible side by side in a grid; click a session's ⊞ to add it to the split, and drag pane headers (or sidebar sessions) to rearrange.
 - **Session persistence** — sessions open when you quit are offered for restore on the next launch, resuming the agent conversation via `claude --continue` / `codex resume --last`.
 - **Agent memory** — a per-session Memory panel to view and edit the project memory file (`CLAUDE.md` / `AGENTS.md`) and your global memory, plus one-click context compaction (`/compact`).
 - **Theme gallery** — Modern (HIG-inspired, light/dark/system), Cyberpunk (neon grid), and Retro XP (Luna nostalgia). Skins are pure CSS tokens, so adding more is easy.
@@ -67,8 +67,8 @@ npm run tauri build   # produces .deb / .rpm / .AppImage in src-tauri/target/rel
 ## Roadmap
 
 - [ ] User-defined themes
-- [ ] Drag-to-rearrange split panes
 - [ ] Cost estimates in the usage overview
+- [ ] Interactive approvals for Codex chat (pending upstream protocol support)
 - [ ] Flatpak / AUR packaging
 
 ## A note on Apple design resources

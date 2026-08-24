@@ -140,8 +140,7 @@ export default function App() {
 
   const openSession = useCallback(
     async (project: Project, kind?: SessionKind, resume = false) => {
-      const sessionKind: SessionKind =
-        kind ?? (project.provider === "claude" ? "chat" : "terminal");
+      const sessionKind: SessionKind = kind ?? "chat";
       const session = await ipc.createSession(project.id, resume, sessionKind);
       trackSession(session);
       setPanes((prev) =>

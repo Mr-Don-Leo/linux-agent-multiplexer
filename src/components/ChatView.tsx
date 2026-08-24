@@ -1,55 +1,35 @@
-import { Fragment, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { attachSession, chatSend, detachSession, onChatEvent, onChatHistory } from "../ipc";
 import {
   approvalResponseLine,
+  codexInterruptLine,
+  codexUserLine,
   emptyChatState,
   interruptLine,
   reduceChatLine,
+  reduceCodexLine,
   toolSummary,
   userMessageLine,
   type ChatItem,
   type ChatState,
 } from "../chat";
+import type { Provider } from "../types";
+import Markdown from "./Markdown";
 
 interface Props {
   sessionId: string;
+  provider: Provider;
   running: boolean;
   /** Fired on live events worth notifying about (approvals, turn completion). */
   onAttention?: (text: string) => void;
-}
-
-/** Tiny markdown renderer: fenced code blocks, inline code, bold. */
-function Md({ text }: { text: string }) {
-  const parts = text.split(/```(?:[a-zA-Z0-9_-]*)\n?/);
-  return (
-    <>
-      {parts.map((part, i) =>
-        i % 2 === 1 ? (
-          <pre key={i} className="md-code">
-            {part.replace(/\n$/, "")}
-          </pre>
-        ) : (
-          <Fragment key={i}>
-            {part.split(/(`[^`\n]+`|\*\*[^*\n]+\*\*)/).map((seg, j) => {
-              if (seg.startsWith("`") && seg.endsWith("`"))
-                return <code key={j}>{seg.slice(1, -1)}</code>;
-              if (seg.startsWith("**") && seg.endsWith("**"))
-                return <strong key={j}>{seg.slice(2, -2)}</strong>;
-              return <Fragment key={j}>{seg}</Fragment>;
-            })}
-          </Fragment>
-        ),
-      )}
-    </>
-  );
 }
 
 function ThinkingBubble({ text }: { text: string }) {
   const [open, setOpen] = useState(false);
   return (
     <div className="bubble thinking" onClick={() => setOpen(!open)}>
-      {open ? <Md text={text} /> : `Thinking · ${text.split("\n")[0].slice(0, 80)}…`}
+      {open ? <Markdown text={text} /> : `Thinking · ${text.split("\n")[0].slice(0, 80)}…`}
     </div>
   );
 }
@@ -74,7 +54,7 @@ function ToolCard({ item }: { item: Extract<ChatItem, { kind: "tool" }> }) {
   );
 }
 
-export default function ChatView({ sessionId, running, onAttention }: Props) {
+export default function ChatView({ sessionId, provider, running, onAttention }: Props) {
   const [, forceRender] = useState(0);
   const stateRef = useRef<ChatState>(emptyChatState());
   const [draft, setDraft] = useState("");
@@ -86,8 +66,9 @@ export default function ChatView({ sessionId, running, onAttention }: Props) {
     stateRef.current = emptyChatState();
     const rerender = () => forceRender((n) => n + 1);
 
+    const reduce = provider === "codex" ? reduceCodexLine : reduceChatLine;
     const applyLine = (line: string, live: boolean) => {
-      const effects = reduceChatLine(stateRef.current, line);
+      const effects = reduce(stateRef.current, line);
       if (live && effects.approvalRequested) {
         onAttentionRef.current?.(
           `Approval needed: ${effects.approvalRequested.toolName}` +
@@ -130,7 +111,8 @@ export default function ChatView({ sessionId, running, onAttention }: Props) {
       detachSession(sessionId).catch(() => {});
       unlisteners.forEach((u) => u());
     };
-  }, [sessionId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId, provider]);
 
   const state = stateRef.current;
 
@@ -141,13 +123,14 @@ export default function ChatView({ sessionId, running, onAttention }: Props) {
 
   const send = () => {
     const text = draft.trim();
-    if (!text || !running) return;
+    if (!text || !running || state.busy) return;
     state.items.push({ kind: "user", text });
     state.busy = true;
     state.lastResult = undefined;
     setDraft("");
-    chatSend(sessionId, userMessageLine(text)).catch(() => {
-      state.items.push({ kind: "info", text: "Failed to send message", error: true });
+    const line = provider === "codex" ? codexUserLine(text) : userMessageLine(text);
+    chatSend(sessionId, line).catch((e) => {
+      state.items.push({ kind: "info", text: `Failed to send: ${e}`, error: true });
       state.busy = false;
       forceRender((n) => n + 1);
     });
@@ -161,7 +144,12 @@ export default function ChatView({ sessionId, running, onAttention }: Props) {
   };
 
   const interrupt = () => {
-    chatSend(sessionId, interruptLine()).catch(() => {});
+    const line = provider === "codex" ? codexInterruptLine() : interruptLine();
+    chatSend(sessionId, line).catch(() => {});
+    if (provider === "codex") {
+      state.busy = false;
+      forceRender((n) => n + 1);
+    }
   };
 
   return (
@@ -177,13 +165,13 @@ export default function ChatView({ sessionId, running, onAttention }: Props) {
             case "user":
               return (
                 <div key={i} className="bubble user">
-                  <Md text={item.text} />
+                  <Markdown text={item.text} />
                 </div>
               );
             case "assistant":
               return (
                 <div key={i} className="bubble assistant">
-                  <Md text={item.text} />
+                  <Markdown text={item.text} />
                 </div>
               );
             case "thinking":
@@ -228,7 +216,17 @@ export default function ChatView({ sessionId, running, onAttention }: Props) {
               );
           }
         })}
-        {state.busy && (
+        {state.partial && state.partial.text && (
+          <div
+            className={
+              state.partial.kind === "thinking" ? "bubble thinking streaming" : "bubble assistant"
+            }
+          >
+            <Markdown text={state.partial.text} />
+            <span className="stream-cursor" />
+          </div>
+        )}
+        {state.busy && !state.partial?.text && (
           <div className="bubble assistant typing">
             <span className="dot-anim" />
             <span className="dot-anim" />
