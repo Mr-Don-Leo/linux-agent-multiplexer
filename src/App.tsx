@@ -56,6 +56,8 @@ export default function App() {
 
   const sessionsRef = useRef(sessions);
   sessionsRef.current = sessions;
+  const panesRef = useRef(panes);
+  panesRef.current = panes;
   const configRef = useRef(config);
   configRef.current = config;
   const exitUnlisteners = useRef<Record<string, UnlistenFn>>({});
@@ -151,6 +153,26 @@ export default function App() {
       return session;
     },
     [trackSession],
+  );
+
+  /** Home-screen project click: focus an existing running session for the
+   * project if there is one; only create a new session when there is none. */
+  const openProject = useCallback(
+    async (project: Project) => {
+      const existing = sessionsRef.current.filter(
+        (s) => s.projectId === project.id && s.running,
+      );
+      if (existing.length > 0) {
+        const target =
+          existing.find((s) => panesRef.current.includes(s.id)) ?? existing[0];
+        if (!panesRef.current.includes(target.id)) setPanes([target.id]);
+        setFocusedId(target.id);
+        setScreen("workspace");
+        return;
+      }
+      await openSession(project);
+    },
+    [openSession],
   );
 
   const restoreAll = useCallback(async () => {
@@ -260,7 +282,7 @@ export default function App() {
       projects={projects}
       onCreate={createProject}
       onDelete={deleteProject}
-      onOpen={openSession}
+      onOpen={openProject}
       onTheme={setTheme}
       onSkin={setSkin}
       restorableCount={restorable.length}

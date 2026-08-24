@@ -25,6 +25,10 @@ interface Props {
   onAttention?: (text: string) => void;
 }
 
+/** Unsent composer drafts, kept per session for the lifetime of the app so
+ * navigating away (projects, settings, other panes) never loses typed text. */
+const sessionDrafts = new Map<string, string>();
+
 function ThinkingBubble({ text }: { text: string }) {
   const [open, setOpen] = useState(false);
   return (
@@ -57,7 +61,12 @@ function ToolCard({ item }: { item: Extract<ChatItem, { kind: "tool" }> }) {
 export default function ChatView({ sessionId, provider, running, onAttention }: Props) {
   const [, forceRender] = useState(0);
   const stateRef = useRef<ChatState>(emptyChatState());
-  const [draft, setDraft] = useState("");
+  const [draft, setDraftState] = useState(() => sessionDrafts.get(sessionId) ?? "");
+  const setDraft = (value: string) => {
+    setDraftState(value);
+    if (value) sessionDrafts.set(sessionId, value);
+    else sessionDrafts.delete(sessionId);
+  };
   const scrollRef = useRef<HTMLDivElement>(null);
   const onAttentionRef = useRef(onAttention);
   onAttentionRef.current = onAttention;

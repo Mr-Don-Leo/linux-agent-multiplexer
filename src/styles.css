@@ -955,6 +955,67 @@ textarea {
   color: var(--text);
 }
 
+.sidebar-footer {
+  padding: 12px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sidebar-footer .footer-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-footer .footer-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.new-session-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  color: var(--text);
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.new-session-btn svg {
+  color: var(--text-secondary);
+  transition: color 0.15s ease;
+  flex-shrink: 0;
+}
+
+.new-session-btn:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.new-session-btn:hover svg {
+  color: var(--accent);
+}
+
+.new-session-btn:active {
+  transform: scale(0.98);
+}
+
 .session-item .split-add {
   opacity: 0;
   border: none;

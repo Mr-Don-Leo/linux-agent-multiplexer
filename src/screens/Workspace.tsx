@@ -140,34 +140,53 @@ export default function Workspace({
             </div>
           )}
         </div>
-        <div
-          style={{
-            padding: 10,
-            borderTop: "1px solid var(--border)",
-            display: "flex",
-            flexDirection: "column",
-            gap: 6,
-          }}
-        >
-          {focusedProject && (
-            <>
+        {focusedProject && (
+          <div className="sidebar-footer">
+            <span className="footer-label" title={focusedProject.name}>
+              New session in {focusedProject.name}
+            </span>
+            <div className="footer-actions">
               <button
-                className="btn"
-                style={{ width: "100%" }}
+                className="new-session-btn"
                 onClick={() => onNewSession(focusedProject, "chat")}
               >
-                + Chat · {focusedProject.name}
+                <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
+                  <path
+                    d="M14 8A6 6 0 1 1 4.7 13L2 14l1-2.7A6 6 0 1 1 14 8Z"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+                Chat
               </button>
               <button
-                className="btn"
-                style={{ width: "100%" }}
+                className="new-session-btn"
                 onClick={() => onNewSession(focusedProject, "terminal")}
               >
-                + Terminal · {focusedProject.name}
+                <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
+                  <rect
+                    x="1.5"
+                    y="2.5"
+                    width="13"
+                    height="11"
+                    rx="2"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                  />
+                  <path
+                    d="m4.5 6 2 2-2 2M8.5 10h3"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+                Terminal
               </button>
-            </>
-          )}
-        </div>
+            </div>
+          </div>
+        )}
       </aside>
 
       <main className="workspace-main">
