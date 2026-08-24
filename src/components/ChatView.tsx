@@ -132,7 +132,10 @@ export default function ChatView({ sessionId, provider, running, onAttention }: 
 
   const send = () => {
     const text = draft.trim();
-    if (!text || !running || state.busy) return;
+    if (!text || !running) return;
+    // Claude's stream-json input accepts user messages mid-turn (steering);
+    // Codex runs one turn at a time, so sends wait for the turn to finish.
+    if (state.busy && provider === "codex") return;
     state.items.push({ kind: "user", text });
     state.busy = true;
     state.lastResult = undefined;
@@ -258,7 +261,7 @@ export default function ChatView({ sessionId, provider, running, onAttention }: 
             }
           }}
         />
-        {state.busy ? (
+        {state.busy && (provider === "codex" || !draft.trim()) ? (
           <button className="btn btn-danger" title="Interrupt" onClick={interrupt}>
             Stop
           </button>

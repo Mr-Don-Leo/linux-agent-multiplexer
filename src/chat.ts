@@ -113,7 +113,10 @@ export function reduceChatLine(state: ChatState, line: string): ReduceEffects {
     }
     case "assistant": {
       state.partial = undefined;
-      staleApprovals(state.items);
+      // Do NOT stale approvals here: the CLI can emit further assistant blocks
+      // while a permission request is still pending; hiding its buttons would
+      // deadlock the turn. Approvals resolve via their tool_result or at the
+      // end of the turn (result event).
       const blocks = event.message?.content ?? [];
       for (const block of blocks) {
         if (block.type === "text" && block.text?.trim()) {
@@ -158,7 +161,9 @@ export function reduceChatLine(state: ChatState, line: string): ReduceEffects {
               (i): i is Extract<ChatItem, { kind: "approval" }> =>
                 i.kind === "approval" && i.toolUseId === block.tool_use_id,
             );
-            if (approval && approval.answered === undefined) approval.answered = "allow";
+            if (approval && approval.answered === undefined) {
+              approval.answered = block.is_error === true ? "deny" : "allow";
+            }
           }
         }
       }
