@@ -1,24 +1,27 @@
 import { useState } from "react";
-import type { NewProject, Provider } from "../types";
+import type { NewProject, Project, Provider } from "../types";
 import { CLAUDE_MODELS, CODEX_MODELS } from "../types";
 import Select from "./Select";
 
 interface Props {
+  /** When set, the dialog edits this project instead of creating a new one. */
+  initial?: Project;
   onCancel: () => void;
-  onCreate: (project: NewProject) => Promise<void>;
+  onSave: (project: NewProject) => Promise<void>;
 }
 
-export default function CreateProject({ onCancel, onCreate }: Props) {
-  const [name, setName] = useState("");
-  const [agentName, setAgentName] = useState("");
-  const [githubRepo, setGithubRepo] = useState("");
-  const [domain, setDomain] = useState("");
-  const [port, setPort] = useState("");
-  const [provider, setProvider] = useState<Provider>("claude");
-  const [model, setModel] = useState("default");
-  const [instructions, setInstructions] = useState("");
+export default function CreateProject({ initial, onCancel, onSave }: Props) {
+  const [name, setName] = useState(initial?.name ?? "");
+  const [agentName, setAgentName] = useState(initial?.agentName ?? "");
+  const [githubRepo, setGithubRepo] = useState(initial?.githubRepo ?? "");
+  const [domain, setDomain] = useState(initial?.domain ?? "");
+  const [port, setPort] = useState(initial?.port != null ? String(initial.port) : "");
+  const [provider, setProvider] = useState<Provider>(initial?.provider ?? "claude");
+  const [model, setModel] = useState(initial?.model ?? "default");
+  const [instructions, setInstructions] = useState(initial?.instructions ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const editing = initial !== undefined;
 
   const models = provider === "claude" ? CLAUDE_MODELS : CODEX_MODELS;
 
@@ -26,7 +29,7 @@ export default function CreateProject({ onCancel, onCreate }: Props) {
     setBusy(true);
     setError(null);
     try {
-      await onCreate({
+      await onSave({
         name: name.trim(),
         agentName: agentName.trim(),
         githubRepo: githubRepo.trim() || null,
@@ -45,7 +48,7 @@ export default function CreateProject({ onCancel, onCreate }: Props) {
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onCancel()}>
       <div className="modal card">
-        <h2>New Project</h2>
+        <h2>{editing ? "Edit Project" : "New Project"}</h2>
         <div className="row">
           <div className="field">
             <label>Project name *</label>
@@ -59,7 +62,11 @@ export default function CreateProject({ onCancel, onCreate }: Props) {
         <div className="field">
           <label>GitHub repository (optional)</label>
           <input className="input" value={githubRepo} onChange={(e) => setGithubRepo(e.target.value)} placeholder="https://github.com/you/repo.git" />
-          <span className="hint">Cloned into the project folder on creation.</span>
+          <span className="hint">
+            {editing
+              ? "Metadata only — the existing project folder is not moved or re-cloned."
+              : "Cloned into the project folder on creation."}
+          </span>
         </div>
         <div className="row">
           <div className="field">
@@ -103,7 +110,11 @@ export default function CreateProject({ onCancel, onCreate }: Props) {
             onChange={(e) => setInstructions(e.target.value)}
             placeholder="Coding style, project context, rules the agent should always follow…"
           />
-          <span className="hint">Saved as the project's agent memory file (CLAUDE.md / AGENTS.md).</span>
+          <span className="hint">
+            {editing
+              ? "The memory file on disk is not overwritten — edit it from the session's Memory panel."
+              : "Saved as the project's agent memory file (CLAUDE.md / AGENTS.md)."}
+          </span>
         </div>
         {error && <span style={{ color: "var(--danger)", fontSize: 12 }}>{error}</span>}
         <div className="modal-actions">
@@ -115,7 +126,7 @@ export default function CreateProject({ onCancel, onCreate }: Props) {
             onClick={submit}
             disabled={busy || !name.trim() || !agentName.trim()}
           >
-            {busy ? "Creating…" : "Create project"}
+            {busy ? "Saving…" : editing ? "Save changes" : "Create project"}
           </button>
         </div>
       </div>

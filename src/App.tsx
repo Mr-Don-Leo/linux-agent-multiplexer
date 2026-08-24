@@ -113,6 +113,11 @@ export default function App() {
     setProjects((prev) => [...prev, project]);
   }, []);
 
+  const updateProject = useCallback(async (id: string, p: NewProject) => {
+    const updated = await ipc.updateProject(id, p);
+    setProjects((prev) => prev.map((proj) => (proj.id === id ? updated : proj)));
+  }, []);
+
   const deleteProject = useCallback((id: string) => {
     ipc.deleteProject(id).catch(() => {});
     setProjects((prev) => prev.filter((p) => p.id !== id));
@@ -281,6 +286,7 @@ export default function App() {
       config={config}
       projects={projects}
       onCreate={createProject}
+      onUpdate={updateProject}
       onDelete={deleteProject}
       onOpen={openProject}
       onTheme={setTheme}

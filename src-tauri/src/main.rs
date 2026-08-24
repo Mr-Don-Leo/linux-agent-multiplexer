@@ -36,6 +36,11 @@ fn create_project(project: NewProject) -> Result<Project, String> {
 }
 
 #[tauri::command]
+fn update_project(id: String, project: NewProject) -> Result<Project, String> {
+    projects::update_project(&id, project)
+}
+
+#[tauri::command]
 fn delete_project(id: String) -> Result<(), String> {
     projects::delete_project(&id)
 }
@@ -214,6 +219,7 @@ fn main() {
             save_config,
             list_projects,
             create_project,
+            update_project,
             delete_project,
             check_cli,
             session_create,

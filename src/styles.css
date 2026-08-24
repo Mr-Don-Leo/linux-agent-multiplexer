@@ -626,6 +626,19 @@ textarea {
   opacity: 1;
 }
 
+.project-tile .tile-edit {
+  right: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.project-tile .tile-edit:hover,
+.project-tile .tile-delete:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
 .project-tile.new-tile {
   border-style: dashed;
   align-items: center;

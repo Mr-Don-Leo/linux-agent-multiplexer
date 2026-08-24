@@ -9,6 +9,7 @@ interface Props {
   config: AppConfig;
   projects: Project[];
   onCreate: (p: NewProject) => Promise<void>;
+  onUpdate: (id: string, p: NewProject) => Promise<void>;
   onDelete: (id: string) => void;
   onOpen: (project: Project) => void;
   onTheme: (theme: Theme) => void;
@@ -39,6 +40,7 @@ export default function Home({
   config,
   projects,
   onCreate,
+  onUpdate,
   onDelete,
   onOpen,
   onTheme,
@@ -50,6 +52,7 @@ export default function Home({
   onGoWorkspace,
 }: Props) {
   const [creating, setCreating] = useState(false);
+  const [editing, setEditing] = useState<Project | null>(null);
   const [showThemes, setShowThemes] = useState(false);
   const [showUsage, setShowUsage] = useState(false);
 
@@ -110,6 +113,23 @@ export default function Home({
             >
               ✕
             </button>
+            <button
+              className="tile-delete tile-edit"
+              title="Edit project"
+              onClick={(e) => {
+                e.stopPropagation();
+                setEditing(p);
+              }}
+            >
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+                <path
+                  d="m11.3 2.7 2 2L5.5 12.5l-2.8.8.8-2.8 7.8-7.8Z"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
             <div className="tile-icon" style={{ background: tileColor(p.id) }}>
               ⌘
             </div>
@@ -140,9 +160,19 @@ export default function Home({
       {creating && (
         <CreateProject
           onCancel={() => setCreating(false)}
-          onCreate={async (p) => {
+          onSave={async (p) => {
             await onCreate(p);
             setCreating(false);
+          }}
+        />
+      )}
+      {editing && (
+        <CreateProject
+          initial={editing}
+          onCancel={() => setEditing(null)}
+          onSave={async (p) => {
+            await onUpdate(editing.id, p);
+            setEditing(null);
           }}
         />
       )}

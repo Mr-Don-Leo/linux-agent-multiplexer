@@ -17,6 +17,8 @@ export const saveConfig = (config: AppConfig) => invoke<void>("save_config", { c
 
 export const listProjects = () => invoke<Project[]>("list_projects");
 export const createProject = (project: NewProject) => invoke<Project>("create_project", { project });
+export const updateProject = (id: string, project: NewProject) =>
+  invoke<Project>("update_project", { id, project });
 export const deleteProject = (id: string) => invoke<void>("delete_project", { id });
 
 export const checkCli = (provider: Provider) => invoke<CliStatus>("check_cli", { provider });

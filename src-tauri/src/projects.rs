@@ -176,6 +176,34 @@ pub fn create_project(spec: NewProject) -> Result<Project, String> {
     Ok(project)
 }
 
+/// Update a project's metadata in place. The folder on disk is not moved or
+/// re-cloned, and the memory file is left untouched (it is edited from the
+/// Memory panel).
+pub fn update_project(id: &str, spec: NewProject) -> Result<Project, String> {
+    if spec.name.trim().is_empty() {
+        return Err("Project name is required".into());
+    }
+    if spec.agent_name.trim().is_empty() {
+        return Err("Agent name is required".into());
+    }
+    let mut projects = load_projects();
+    let project = projects
+        .iter_mut()
+        .find(|p| p.id == id)
+        .ok_or("No such project")?;
+    project.name = spec.name.trim().to_string();
+    project.agent_name = spec.agent_name.trim().to_string();
+    project.github_repo = spec.github_repo.filter(|r| !r.is_empty());
+    project.domain = spec.domain.filter(|d| !d.is_empty());
+    project.port = spec.port;
+    project.provider = spec.provider;
+    project.model = spec.model.filter(|m| !m.is_empty());
+    project.instructions = spec.instructions.filter(|i| !i.is_empty());
+    let updated = project.clone();
+    store_projects(&projects)?;
+    Ok(updated)
+}
+
 pub fn delete_project(id: &str) -> Result<(), String> {
     let mut projects = load_projects();
     projects.retain(|p| p.id != id);
