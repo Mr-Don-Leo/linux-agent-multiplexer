@@ -319,6 +319,15 @@ textarea {
   position: relative;
 }
 
+.toolbar-select {
+  width: 185px;
+}
+
+.toolbar-select .select {
+  padding: 7px 30px 7px 11px;
+  font-size: 12.5px;
+}
+
 .dropdown-trigger {
   width: 100%;
   text-align: left;

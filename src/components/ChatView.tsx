@@ -14,13 +14,14 @@ import {
   type ChatItem,
   type ChatState,
 } from "../chat";
-import type { Provider } from "../types";
+import type { ApprovalMode, Provider } from "../types";
 import Markdown from "./Markdown";
 
 interface Props {
   sessionId: string;
   provider: Provider;
   running: boolean;
+  approvalMode: ApprovalMode;
   /** Fired on live events worth notifying about (approvals, turn completion). */
   onAttention?: (text: string) => void;
 }
@@ -28,6 +29,13 @@ interface Props {
 /** Unsent composer drafts, kept per session for the lifetime of the app so
  * navigating away (projects, settings, other panes) never loses typed text. */
 const sessionDrafts = new Map<string, string>();
+
+/** Tools covered by the "Auto-approve edits" policy. */
+const EDIT_TOOLS = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit"]);
+
+function autoAllows(mode: ApprovalMode, rawToolName: string): boolean {
+  return mode === "all" || (mode === "edits" && EDIT_TOOLS.has(rawToolName));
+}
 
 function ThinkingBubble({ text }: { text: string }) {
   const [open, setOpen] = useState(false);
@@ -58,7 +66,13 @@ function ToolCard({ item }: { item: Extract<ChatItem, { kind: "tool" }> }) {
   );
 }
 
-export default function ChatView({ sessionId, provider, running, onAttention }: Props) {
+export default function ChatView({
+  sessionId,
+  provider,
+  running,
+  approvalMode,
+  onAttention,
+}: Props) {
   const [, forceRender] = useState(0);
   const stateRef = useRef<ChatState>(emptyChatState());
   const [draft, setDraftState] = useState(() => sessionDrafts.get(sessionId) ?? "");
@@ -70,6 +84,8 @@ export default function ChatView({ sessionId, provider, running, onAttention }: 
   const scrollRef = useRef<HTMLDivElement>(null);
   const onAttentionRef = useRef(onAttention);
   onAttentionRef.current = onAttention;
+  const approvalModeRef = useRef(approvalMode);
+  approvalModeRef.current = approvalMode;
 
   useEffect(() => {
     stateRef.current = emptyChatState();
@@ -79,12 +95,23 @@ export default function ChatView({ sessionId, provider, running, onAttention }: 
     const applyLine = (line: string, live: boolean) => {
       const effects = reduce(stateRef.current, line);
       if (live && effects.approvalRequested) {
-        onAttentionRef.current?.(
-          `Approval needed: ${effects.approvalRequested.toolName}` +
-            (effects.approvalRequested.description
-              ? ` — ${effects.approvalRequested.description}`
-              : ""),
-        );
+        const request = effects.approvalRequested;
+        if (autoAllows(approvalModeRef.current, request.rawToolName)) {
+          const item = stateRef.current.items.find(
+            (i): i is Extract<ChatItem, { kind: "approval" }> =>
+              i.kind === "approval" && i.requestId === request.requestId,
+          );
+          if (item) item.answered = "allow";
+          stateRef.current.busy = true;
+          chatSend(sessionId, approvalResponseLine(request.requestId, true, request.input)).catch(
+            () => {},
+          );
+        } else {
+          onAttentionRef.current?.(
+            `Approval needed: ${request.toolName}` +
+              (request.description ? ` — ${request.description}` : ""),
+          );
+        }
       }
       if (live && effects.turnDone) onAttentionRef.current?.("Finished responding");
     };
@@ -124,6 +151,30 @@ export default function ChatView({ sessionId, provider, running, onAttention }: 
   }, [sessionId, provider]);
 
   const state = stateRef.current;
+
+  // Switching to an auto-approve mode immediately answers any approvals that
+  // are already waiting, so a stacked-up queue clears with one selection.
+  useEffect(() => {
+    if (approvalMode === "ask" || provider !== "claude") return;
+    const pending = stateRef.current.items.filter(
+      (i): i is Extract<ChatItem, { kind: "approval" }> =>
+        i.kind === "approval" && i.answered === undefined,
+    );
+    let answeredAny = false;
+    for (const item of pending) {
+      // The approval card stores the display name; match on it as well as the
+      // canonical set since they coincide for the built-in edit tools.
+      if (autoAllows(approvalMode, item.toolName)) {
+        item.answered = "allow";
+        answeredAny = true;
+        chatSend(sessionId, approvalResponseLine(item.requestId, true, item.input)).catch(() => {});
+      }
+    }
+    if (answeredAny) {
+      stateRef.current.busy = true;
+      forceRender((n) => n + 1);
+    }
+  }, [approvalMode, provider, sessionId]);
 
   useEffect(() => {
     const el = scrollRef.current;

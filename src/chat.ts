@@ -61,7 +61,14 @@ function staleApprovals(items: ChatItem[]) {
 }
 
 export interface ReduceEffects {
-  approvalRequested?: { toolName: string; description?: string };
+  approvalRequested?: {
+    requestId: string;
+    toolName: string;
+    /** Canonical tool name (e.g. "Write"), used for auto-approval matching. */
+    rawToolName: string;
+    input: unknown;
+    description?: string;
+  };
   turnDone?: boolean;
 }
 
@@ -181,7 +188,10 @@ export function reduceChatLine(state: ChatState, line: string): ReduceEffects {
         });
         state.busy = false;
         effects.approvalRequested = {
+          requestId: event.request_id,
           toolName: event.request.display_name || event.request.tool_name,
+          rawToolName: event.request.tool_name,
+          input: event.request.input,
           description: event.request.description,
         };
       }

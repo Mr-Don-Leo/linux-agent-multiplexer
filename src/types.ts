@@ -54,6 +54,15 @@ export interface NewProject {
 
 export type SessionKind = "chat" | "terminal";
 
+/** Per-session approval policy for agent permission requests. */
+export type ApprovalMode = "ask" | "edits" | "all";
+
+export const APPROVAL_MODES: { value: ApprovalMode; label: string }[] = [
+  { value: "ask", label: "Ask to approve" },
+  { value: "edits", label: "Auto-approve edits" },
+  { value: "all", label: "Auto-approve all" },
+];
+
 export interface SessionInfo {
   id: string;
   projectId: string;

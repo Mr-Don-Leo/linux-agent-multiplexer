@@ -1,10 +1,12 @@
 import { useState } from "react";
-import type { Project, SessionInfo, SessionKind, Skin } from "../types";
+import type { ApprovalMode, Project, SessionInfo, SessionKind, Skin } from "../types";
+import { APPROVAL_MODES } from "../types";
 import type { DetectedPrompt } from "../prompt";
 import { encodeInput, writeSession } from "../ipc";
 import Terminal from "../components/Terminal";
 import ChatView from "../components/ChatView";
 import MemoryPanel from "../components/MemoryPanel";
+import Select from "../components/Select";
 
 const MAX_PANES = 4;
 
@@ -48,6 +50,8 @@ export default function Workspace({
   onBack,
 }: Props) {
   const [showMemory, setShowMemory] = useState(false);
+  /** Per-session approval policy; defaults to asking every time. */
+  const [approvalModes, setApprovalModes] = useState<Record<string, ApprovalMode>>({});
 
   const focused = sessions.find((s) => s.id === focusedId) ?? null;
   const focusedProject = focused
@@ -202,7 +206,21 @@ export default function Workspace({
                   </span>
                 )}
               </span>
-              <div style={{ display: "flex", gap: 8 }}>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                {focused?.kind === "chat" && focused.provider === "claude" && (
+                  <div className="toolbar-select" title="Approval policy for this session">
+                    <Select
+                      value={approvalModes[focused.id] ?? "ask"}
+                      options={APPROVAL_MODES}
+                      onChange={(value) =>
+                        setApprovalModes((prev) => ({
+                          ...prev,
+                          [focused.id]: value as ApprovalMode,
+                        }))
+                      }
+                    />
+                  </div>
+                )}
                 <button
                   className={"btn" + (showMemory ? " btn-primary" : "")}
                   onClick={() => setShowMemory(!showMemory)}
@@ -249,6 +267,7 @@ export default function Workspace({
                           sessionId={id}
                           provider={session.provider}
                           running={session.running}
+                          approvalMode={approvalModes[id] ?? "ask"}
                           onAttention={(text) => onAttention(id, text)}
                         />
                       ) : (
